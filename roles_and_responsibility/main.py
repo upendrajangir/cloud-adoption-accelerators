@@ -33,6 +33,34 @@ def acquire_token_by_service_principal(tenant_id, client_id, client_secret):
     except Exception as e:
         logger.error("Error creating ConfidentialClientApplication: {}".format(e))
 
+
+def get_users_from_ad(tenant_id, client_id, client_secret):
+    """
+    Get all users from AD
+    """
+    app = acquire_token_by_service_principal(tenant_id, client_id, client_secret)
+    try:
+        result = app.acquire_token_for_client(
+            scopes=["https://graph.microsoft.com/.default"]
+        )
+        users = requests.get(  # Use token to call downstream service
+            "https://graph.microsoft.com/v1.0/users",
+            headers={"Authorization": "Bearer " + result["access_token"]},
+        ).json()
+        return users
+    except Exception as e:
+        logger.error("Error getting users from AD: {}".format(e))
+
+
+def get_users_from_csv(file_path):
+    """
+    Get users from CSV
+    """
+    file_path = os.getcwd() + file_path
+    raw_users = pd.read_csv(file_path)
+    users = {"value": raw_users.to_dict("records")}
+    return users
+
 if __name__ == "__main":
     tenant_id = (os.getenv("TENANT_ID"),)
     client_id = (os.getenv("CLIENT_ID"),)
