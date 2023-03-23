@@ -154,6 +154,114 @@ def add_custom_roles(
         # Log error message if custom role creation fails.
         logger.error("Error adding custom roles: {}".format(e))
 
+
+def add_ad_groups(
+    group_data: Dict[str, str], tenant_id: str, client_id: str, client_secret: str
+) -> bool:
+    """
+    Add Azure AD groups to the system using Microsoft Graph API.
+
+    Parameters:
+        group_data (Dict[str, str]): A dictionary containing group data including
+            display name and mail nickname.
+        tenant_id (str): The tenant ID of the Azure AD instance.
+        client_id (str): The client ID of the Azure AD application used to authenticate.
+        client_secret (str): The client secret of the Azure AD application used to authenticate.
+
+    Returns:
+        bool: True if the group was created successfully, False otherwise.
+
+    Raises:
+        requests.exceptions.HTTPError: If an HTTP error is encountered while making
+            the API call.
+
+    """
+    # Acquire an access token using the MSAL library
+    app = ConfidentialClientApplication(
+        client_id=client_id,
+        client_credential=client_secret,
+        authority=f"https://login.microsoftonline.com/{tenant_id}",
+    )
+    result = app.acquire_token_for_client(
+        scopes=["https://graph.microsoft.com/.default"]
+    )
+    access_token = result["access_token"]
+
+    # Set the API request headers
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Define the group display name and mail nickname
+    group_display_name = group_data["displayName"]
+    group_mail_nickname = group_data["mailNickname"]
+
+    # Create the group
+    group_url = "https://graph.microsoft.com/v1.0/groups"
+    group_payload = {
+        "displayName": group_display_name,
+        "mailNickname": group_mail_nickname,
+        "groupTypes": [],
+        "mailEnabled": False,
+        "securityEnabled": True,
+        "description": "Azure AD Group",
+    }
+    try:
+        response = requests.post(
+            group_url, headers=headers, data=json.dumps(group_payload)
+        )
+        response.raise_for_status()
+        return True
+    except requests.exceptions.HTTPError as e:
+        # Log the error and return False to indicate that the group was not created
+        logger.error(f"Error adding AD group: {e}")
+        return False
+
+
+def add_users_to_group(
+    user_id: str,
+    group_id: str,
+    client_id: str,
+    client_secret: str,
+    tenant_id: str,
+):
+    """
+    some docstring
+    """
+    # Acquire an access token using the MSAL library
+    app = ConfidentialClientApplication(
+        client_id=client_id,
+        client_credential=client_secret,
+        authority=f"https://login.microsoftonline.com/{tenant_id}",
+    )
+    result = app.acquire_token_for_client(
+        scopes=["https://graph.microsoft.com/.default"]
+    )
+    access_token = result["access_token"]
+
+    # Set the API request headers
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Add user to group
+    user_add_url = f"https://graph.microsoft.com/v1.0/groups/{group_id}/members/$ref"
+    user_add_payload = {
+        "@odata.id": f"https://graph.microsoft.com/v1.0/directoryObjects/{user_id}"
+    }
+    try:
+        response = requests.post(
+            user_add_url, headers=headers, data=json.dumps(user_add_payload)
+        )
+        response.raise_for_status()
+        return True
+    except requests.exceptions.HTTPError as e:
+        # Log the error and return False to indicate that the group was not created
+        logger.error(f"Error adding user to AD group: {e}")
+        return False
+
 if __name__ == "__main":
     tenant_id = (os.getenv("TENANT_ID"),)
     client_id = (os.getenv("CLIENT_ID"),)
