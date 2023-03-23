@@ -262,6 +262,67 @@ def add_users_to_group(
         logger.error(f"Error adding user to AD group: {e}")
         return False
 
+
+def add_roles_to_group(
+    group_id: str,
+    role_id: str,
+    subscription_id: str,
+    tenant_id: str,
+    client_id: str,
+    client_secret: str,
+) -> bool:
+    """
+    Assigns the Contributor role to a group on a subscription in Azure.
+
+    Args:
+        group_id (str): The ID of the group to assign the role to.
+        role_id (str): The ID of the role to assign (e.g. "b24988ac-6180-42a0-ab88-20f7382dd24c").
+        subscription_id (str): The ID of the subscription to assign the role on.
+        tenant_id (str): The ID of the Azure tenant.
+        client_id (str): The ID of the client/application used to authenticate.
+        client_secret (str): The client secret used to authenticate.
+
+    Returns:
+        bool: True if the role was successfully assigned, False otherwise.
+    """
+    # Acquire an access token using the MSAL library
+    app = ConfidentialClientApplication(
+        client_id=client_id,
+        client_credential=client_secret,
+        authority=f"https://login.microsoftonline.com/{tenant_id}",
+    )
+    result = app.acquire_token_for_client(
+        scopes=["https://management.azure.com/.default"]
+    )
+    access_token = result["access_token"]
+
+    # Set the API request headers
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Assign the role to the group
+    role_assign_url = f"https://management.azure.com/subscriptions/{subscription_id}/providers/Microsoft.Authorization/roleAssignments/{group_id}?api-version=2022-04-01"
+
+    role_assign_payload = {
+        "properties": {
+            "roleDefinitionId": f"/subscriptions/{subscription_id}/providers/Microsoft.Authorization/roleDefinitions/{role_id}",
+            "principalId": group_id,
+        }
+    }
+
+    try:
+        response = requests.put(
+            role_assign_url, headers=headers, data=json.dumps(role_assign_payload)
+        )
+        response.raise_for_status()
+        return True
+    except requests.exceptions.HTTPError as e:
+        # Log the error and return False to indicate that the role was not assigned
+        logger.error(f"Error assigning role to group: {e}")
+        return False
+
 if __name__ == "__main":
     tenant_id = (os.getenv("TENANT_ID"),)
     client_id = (os.getenv("CLIENT_ID"),)
