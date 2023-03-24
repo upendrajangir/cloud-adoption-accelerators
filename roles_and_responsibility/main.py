@@ -61,22 +61,29 @@ def acquire_token_by_service_principal(tenant_id, client_id, client_secret):
         return None
 
 
-def get_users_from_ad(tenant_id, client_id, client_secret):
+def get_users_from_ad(access_token: str) -> Dict[str, str]:
     """
-    Get all users from AD
+    Retrieves a dictionary of all users from the Azure Active Directory using the provided access token.
+
+    Args:
+        access_token (str): The access token used to authenticate and authorize the request.
+
+    Returns:
+        A dictionary of users, where each key-value pair represents a user's property name and value, respectively.
+        For example, {"displayName": "John Smith", "userPrincipalName": "john.smith@contoso.com", ...}
+
+    Raises:
+        requests.exceptions.RequestException: If there was an error sending the request or receiving the response.
     """
-    app = acquire_token_by_service_principal(tenant_id, client_id, client_secret)
     try:
-        result = app.acquire_token_for_client(
-            scopes=["https://graph.microsoft.com/.default"]
-        )
-        users = requests.get(  # Use token to call downstream service
+        response = requests.get(
             "https://graph.microsoft.com/v1.0/users",
-            headers={"Authorization": "Bearer " + result["access_token"]},
-        ).json()
-        return users
-    except Exception as e:
-        logger.error("Error getting users from AD: {}".format(e))
+            headers={"Authorization": "Bearer " + access_token},
+        )
+        response.raise_for_status()  # Raises an HTTPError if the response status code is not successful
+        return response.json()["value"]
+    except requests.exceptions.RequestException as error:
+        logger.exception(f"Error getting users from AD: {error}")
 
 
 def get_users_from_csv(file_path):
@@ -87,6 +94,31 @@ def get_users_from_csv(file_path):
     raw_users = pd.read_csv(file_path)
     users = {"value": raw_users.to_dict("records")}
     return users
+
+
+def get_ad_groups(access_token: str) -> Dict[str, str]:
+    """
+    Retrieves a dictionary of all groups from the Azure Active Directory using the provided access token.
+
+    Args:
+        access_token (str): The access token used to authenticate and authorize the request.
+
+    Returns:
+        A dictionary of groups, where each key-value pair represents a group's property name and value, respectively.
+        For example, {"displayName": "My Group", "description": "My group description", ...}
+
+    Raises:
+        requests.exceptions.RequestException: If there was an error sending the request or receiving the response.
+    """
+    try:
+        response = requests.get(
+            "https://graph.microsoft.com/v1.0/groups",
+            headers={"Authorization": "Bearer " + access_token},
+        )
+        response.raise_for_status()  # Raises an HTTPError if the response status code is not successful
+        return response.json()["value"]
+    except requests.exceptions.RequestException as error:
+        logger.exception(f"Error getting groups from AD: {error}")
 
 
 def add_custom_roles(
@@ -163,9 +195,7 @@ def add_custom_roles(
         logger.error("Error adding custom roles: {}".format(e))
 
 
-def add_ad_groups(
-    group_data: Dict[str, str], tenant_id: str, client_id: str, client_secret: str
-) -> bool:
+def add_ad_groups(group_data: Dict[str, str], access_token: str) -> bool:
     """
     Add Azure AD groups to the system using Microsoft Graph API.
 
@@ -184,16 +214,6 @@ def add_ad_groups(
             the API call.
 
     """
-    # Acquire an access token using the MSAL library
-    app = ConfidentialClientApplication(
-        client_id=client_id,
-        client_credential=client_secret,
-        authority=f"https://login.microsoftonline.com/{tenant_id}",
-    )
-    result = app.acquire_token_for_client(
-        scopes=["https://graph.microsoft.com/.default"]
-    )
-    access_token = result["access_token"]
 
     # Set the API request headers
     headers = {
@@ -204,6 +224,7 @@ def add_ad_groups(
     # Define the group display name and mail nickname
     group_display_name = group_data["displayName"]
     group_mail_nickname = group_data["mailNickname"]
+    group_description = group_data["description"]
 
     # Create the group
     group_url = "https://graph.microsoft.com/v1.0/groups"
@@ -213,7 +234,7 @@ def add_ad_groups(
         "groupTypes": [],
         "mailEnabled": False,
         "securityEnabled": True,
-        "description": "Azure AD Group",
+        "description": group_description,
     }
     try:
         response = requests.post(
@@ -227,26 +248,14 @@ def add_ad_groups(
         return False
 
 
-def add_users_to_group(
+def add_user_to_group(
     user_id: str,
     group_id: str,
-    client_id: str,
-    client_secret: str,
-    tenant_id: str,
-):
+    access_token: str,
+) -> bool:
     """
     some docstring
     """
-    # Acquire an access token using the MSAL library
-    app = ConfidentialClientApplication(
-        client_id=client_id,
-        client_credential=client_secret,
-        authority=f"https://login.microsoftonline.com/{tenant_id}",
-    )
-    result = app.acquire_token_for_client(
-        scopes=["https://graph.microsoft.com/.default"]
-    )
-    access_token = result["access_token"]
 
     # Set the API request headers
     headers = {
@@ -271,7 +280,7 @@ def add_users_to_group(
         return False
 
 
-def add_roles_to_group(
+def assign_roles_to_group(
     group_id: str,
     role_id: str,
     subscription_id: str,
@@ -331,6 +340,7 @@ def add_roles_to_group(
         logger.error(f"Error assigning role to group: {e}")
         return False
 
+
 def get_user_job_title_from_ad(access_token: str, user_email: str) -> Optional[str]:
     """
     Retrieve a user's job title from Azure Active Directory based on their email address.
@@ -377,7 +387,44 @@ def get_user_job_title_from_ad(access_token: str, user_email: str) -> Optional[s
         # Log the error and return None to indicate that the job title could not be fetched
         logger.error(f"Error fetching user job title: {e}")
         return None
-if __name__ == "__main":
-    tenant_id = (os.getenv("TENANT_ID"),)
-    client_id = (os.getenv("CLIENT_ID"),)
-    client_secret = (os.getenv("CLIENT_SECRET"),)
+
+
+if __name__ == "__main__":
+    tenant_id = os.getenv("TENANT_ID")
+    client_id = os.getenv("CLIENT_ID")
+    client_secret = os.getenv("CLIENT_SECRET")
+
+    # Get access token
+    access_token = acquire_token_by_service_principal(
+        tenant_id=tenant_id, client_id=client_id, client_secret=client_secret
+    )
+
+    # Creating groups list
+    file_path = os.getcwd() + "/data/groups.json"
+    with open(file_path, "r") as file:
+        groups = json.load(file)["value"]
+
+    # Create Azure AD groups
+    for group in groups:
+        group_data = {
+            "displayName": group["displayName"],
+            "mailNickname": group["mailNickname"],
+            "description": group["description"],
+        }
+        add_ad_groups(access_token=access_token, group_data=group_data)
+
+    
+    # Generate all groups list
+    groups = get_ad_groups(access_token=access_token)
+
+    # Method A: Assign roles to users by AD job title
+
+    # Get list of users from AD
+    users = get_users_from_ad(access_token=access_token)
+    
+    # Add users to the groups
+    for group in groups:
+        for user in users:
+            if user["jobTitle"] == group["displayName"]:
+                add_user_to_group(access_token=access_token, group_id=group["id"], user_id=user["id"])
+                
