@@ -6,7 +6,7 @@ import requests
 import coloredlogs
 import logging
 import uuid
-from typing import List, Dict
+from typing import List, Dict, Optional
 from dotenv import load_dotenv
 import pandas as pd
 from msal import ConfidentialClientApplication
@@ -44,13 +44,21 @@ def acquire_token_by_service_principal(tenant_id, client_id, client_secret):
     Acquire token by service principal
     """
     try:
-        return ConfidentialClientApplication(
+        app = ConfidentialClientApplication(
             client_id=client_id,
             authority=f"https://login.microsoftonline.com/{tenant_id}",
             client_credential=client_secret,
         )
+        # Acquire token for the Microsoft Graph API
+        result = app.acquire_token_for_client(
+            scopes=["https://graph.microsoft.com/.default"]
+        )
+
+        if "access_token" in result:
+            return result["access_token"]
     except Exception as e:
         logger.error("Error creating ConfidentialClientApplication: {}".format(e))
+        return None
 
 
 def get_users_from_ad(tenant_id, client_id, client_secret):
@@ -323,6 +331,52 @@ def add_roles_to_group(
         logger.error(f"Error assigning role to group: {e}")
         return False
 
+def get_user_job_title_from_ad(access_token: str, user_email: str) -> Optional[str]:
+    """
+    Retrieve a user's job title from Azure Active Directory based on their email address.
+
+    Args:
+        access_token (str): The access token used for authenticating with the Microsoft Graph API.
+        user_email (str): The email address of the user whose job title is to be fetched.
+
+    Returns:
+        Optional[str]: The job title of the user if found, otherwise None.
+    """
+
+    # Set the API request headers
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Set the API request parameters
+    params = {"$select": "jobTitle", "$filter": f"mail eq '{user_email}'"}
+
+    # Set the API request URL
+    graph_url = f"https://graph.microsoft.com/v1.0/users"
+
+    # Send a GET request to the Microsoft Graph API to retrieve the user's job title
+    try:
+        response = requests.get(graph_url, headers=headers, params=params)
+
+        # Check if the response status code is 200, indicating success
+        if response.status_code == 200:
+            users = response.json()["value"]
+
+            # Check if a user is found with the provided email address
+            if users:
+                job_title = users[0]["jobTitle"]
+                return job_title
+            else:
+                logger.error(f"No user found with email {user_email}")
+                return None
+        else:
+            logger.error(f"Error fetching user job title: {response.status_code}")
+            return None
+    except requests.exceptions.RequestException as e:
+        # Log the error and return None to indicate that the job title could not be fetched
+        logger.error(f"Error fetching user job title: {e}")
+        return None
 if __name__ == "__main":
     tenant_id = (os.getenv("TENANT_ID"),)
     client_id = (os.getenv("CLIENT_ID"),)
