@@ -402,8 +402,8 @@ def create_azure_ad_group(
     }
 
     # Define the group display name, mail nickname, and description
-    group_display_name = group_data["display_name"]
-    group_mail_nickname = group_data["mail_nickname"]
+    group_display_name = group_data["displayName"]
+    group_mail_nickname = group_data["mailNickname"]
     group_description = group_data["description"]
 
     # Create the group
@@ -687,9 +687,61 @@ def get_user_job_title_from_ad(
 
 
 if __name__ == "__main__":
-    tenant_id = os.getenv("TENANT_ID")
-    client_id = os.getenv("CLIENT_ID")
-    client_secret = os.getenv("CLIENT_SECRET")
+    ### Interactive interface starts here
+
+    # Step 0: Defining default file paths
+    groups_file_path = ""
+    roles_file_path = ""
+
+    # Step 1: Ask if user wants to use environment variable or provide service principal credentials
+    use_env_variable = input(
+        "Do you want to use environment variables for your credentials? (y/n)"
+    )
+
+    if use_env_variable.lower() == "y":
+        tenant_id = os.getenv("AZURE_TENANT_ID")
+        client_id = os.getenv("AZURE_CLIENT_ID")
+        client_secret = os.getenv("AZURE_CLIENT_SECRET")
+    else:
+        tenant_id = input("Please enter your Azure AD tenant ID: ")
+        client_id = input("Please enter your service principal client ID: ")
+        client_secret = input("Please enter your service principal client secret: ")
+
+    # Step 2: Ask if user wants to create groups
+    create_groups = input("Do you want to create groups? (y/n)")
+
+    if create_groups.lower() == "y":
+        # Step 3: Ask if user wants to use default file groups.json or provide a custom file path
+        use_default_groups_file = input(
+            "Do you want to use the default file groups.json? (y/n)"
+        )
+
+        if use_default_groups_file.lower() == "y":
+            groups_file_path = "/data/groups.json"
+        else:
+            groups_file_path = input(
+                "Please enter the path to your custom groups file: "
+            )
+
+    # Step 4: Ask if user wants to assign roles to users by AD job title or pass a custom file path
+    assign_roles_by_job_title = input(
+        "Do you want to assign roles to users by AD job title? (y/n)"
+    )
+
+    if assign_roles_by_job_title.lower() == "y":
+        roles_file_path = "/data/roles.json"
+    else:
+        roles_file_path = input("Please enter the path to your custom roles file: ")
+
+    # Step 5: Ask if user wants a detailed log file
+    detailed_log = input("Do you want to create a detailed log file? (y/n)")
+
+    if detailed_log.lower() == "y":
+        log_file_path = "detailed_log.txt"
+    else:
+        log_file_path = "log.txt"
+
+    ###  Operations start here ###
 
     # Get access token
     access_token = acquire_azure_ad_access_token(
@@ -697,42 +749,44 @@ if __name__ == "__main__":
     )
 
     # Creating groups list
-    file_path = os.getcwd() + "/data/groups.json"
+    file_path = os.getcwd() + groups_file_path
     with open(file_path, "r") as file:
         groups = json.load(file)["value"]
 
-    # Create Azure AD groups
-    for group in groups:
-        group_data = {
-            "displayName": group["displayName"],
-            "mailNickname": group["mailNickname"],
-            "description": group["description"],
-        }
-        create_azure_ad_group(access_token=access_token, group_data=group_data)
+    if create_groups.lower() == "y":
+        # Create Azure AD groups
+        for group in groups:
+            group_data = {
+                "displayName": group["displayName"],
+                "mailNickname": group["mailNickname"],
+                "description": group["description"],
+            }
+            create_azure_ad_group(access_token=access_token, group_data=group_data)
 
     # Generate all groups list
     groups = fetch_ad_groups(access_token=access_token)
 
-    # Method A: Assign roles to users by AD job title
+    if assign_roles_by_job_title.lower() == "y":
+        # Method A: Assign roles to users by AD job title
 
-    # Get list of users from AD
-    users = fetch_users_from_azure_ad(access_token=access_token)
+        # Get list of users from AD
+        users = fetch_users_from_azure_ad(access_token=access_token)
 
-    # Add users to the groups
-    if groups and users:
-        for group in groups:
-            for user in users:
-                if user.get("jobTitle") == group.get("displayName"):
-                    success = add_user_to_azure_ad_group(
-                        access_token=access_token,
-                        group_id=group["id"],
-                        user_id=user["id"],
-                    )
-                    if success:
-                        logger.info(
-                            f"User {user['mail']} added to group {group['displayName']}"
+        # Add users to the groups
+        if groups and users:
+            for group in groups:
+                for user in users:
+                    if user.get("jobTitle") == group.get("displayName"):
+                        success = add_user_to_azure_ad_group(
+                            access_token=access_token,
+                            group_id=group["id"],
+                            user_id=user["id"],
                         )
-                    else:
-                        logger.error(
-                            f"Failed to add user {user['mail']} to group {group['displayName']}"
-                        )
+                        if success:
+                            logger.info(
+                                f"User {user['mail']} added to group {group['displayName']}"
+                            )
+                        else:
+                            logger.error(
+                                f"Failed to add user {user['mail']} to group {group['displayName']}"
+                            )
