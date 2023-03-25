@@ -12,8 +12,6 @@ from requests.exceptions import RequestException, HTTPError, Timeout, Connection
 import pandas as pd
 from msal import ConfidentialClientApplication, TokenCache
 from azure.identity import ClientSecretCredential
-from azure.mgmt.authorization import AuthorizationManagementClient
-from azure.mgmt.authorization.models import RoleDefinition
 from azure.core.exceptions import (
     AzureError,
     ClientAuthenticationError,
