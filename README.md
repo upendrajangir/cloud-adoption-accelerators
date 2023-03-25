@@ -1,4 +1,4 @@
-![](./data/images/cloud-adoption-accelerators.svg)
+![](./data/images/cloud-adoption-accelerators.png)
 
 <p align="center">
   <sub>
