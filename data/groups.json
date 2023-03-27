@@ -1,0 +1,18 @@
+{
+  "value": [
+    {
+      "displayName": "Cloud Administrator",
+      "mailEnabled": false,
+      "mailNickname": "CloudAdministrator",
+      "securityEnabled": true,
+      "description": "Members of this group have full access to all resources in the cloud."
+    },
+    {
+      "displayName": "Cloud Architect",
+      "mailEnabled": false,
+      "mailNickname": "cloudarchitect",
+      "securityEnabled": true,
+      "description": "Members of this group have full access to all resources in the cloud."
+    }
+  ]
+}
